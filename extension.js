@@ -1,59 +1,146 @@
-const St = imports.gi.St;
+const Lang = imports.lang;
 const Main = imports.ui.main;
+const PanelMenu = imports.ui.panelMenu;
+const PopupMenu = imports.ui.popupMenu;
+const St = imports.gi.St;
 
-let box, iconBox;
+/**
+ * Menu item dealing with legacy tray.
+ */
+var LegacyTrayPopupMenuItem = new Lang.Class({
+    Name : 'LegacyTrayPopupMenuItem',
+    Extends : PopupMenu.PopupBaseMenuItem,
+
+    _init : function(iconBox, params) {
+        this.parent(params);
+        this.iconBox = iconBox;
+        this.actor.add_child(iconBox);
+    },
+
+    removeIconBox : function() {
+        this.actor.remove_child(this.iconBox);
+    }
+});
+
+/**
+ * Panel button with a menu to hold legacy tray.
+ */
+var LegacyTrayButton = new Lang.Class({
+    Name : 'LegacyTrayButton',
+    Extends : PanelMenu.Button,
+
+    _init : function(iconBox) {
+        this.parent(0.0, "Legacy Tray", false);
+
+        /* button icon */
+        let icon = new St.Icon({
+            icon_name : 'system-run-symbolic',
+            style_class : 'system-status-icon'
+        });
+        this.actor.add_child(icon);
+
+        /* menu item with legacy tray inside */
+        this.legacyTrayItem = new LegacyTrayPopupMenuItem(iconBox);
+
+        this.menu.addMenuItem(this.legacyTrayItem);
+    }
+});
+
+let button;
 
 function enable() {
-    /* hide old tray */
-    _tray().hide();
+    /* remove legacy tray from main UI */
+    let widget = Main.legacyTray.actor;
+    Main.uiGroup.remove_child(widget);
 
-    /* container for new layout */
-    box = new St.BoxLayout({
-        style_class : 'legacy-tray-box'
-    });
+    /* disassemble widget */
+    _disassemleWidget();
 
-    /* replace icon box with placeholder */
-    iconBox = _setIconBox(new St.BoxLayout({
-        style_class : 'legacy-tray-icon-box'
-    }));
+    /* status panel button with legacy tray */
+    button = new LegacyTrayButton(widget);
 
-    /* add UI elements */
-    box.add_child(iconBox);
-    Main.uiGroup.add_actor(box);
+    // TODO: remove this, just to debug
+    Main.legacyTrayButton = button;
+
+    /* connects the menu with others in the panel */
+    /* (keyboard navigation, focus, etc) */
+    Main.panel.menuManager.addMenu(button.menu)
+
+    /* add status panel button to main UI */
+    Main.panel._rightBox.insert_child_at_index(button.container, 0);
 }
 
 function disable() {
-    /* remove UI elements */
-    Main.uiGroup.remove_actor(box);
-    box.remove_child(iconBox);
+    /* remove legacy tray from menu */
+    button.lagacyTrayItem.removeIconBox();
 
-    /* replace placeholder with icon box */
-    _setIconBox(iconBox);
+    /* reassemble widget */
+    _reassemleWidget();
 
-    /* show old tray */
-    _tray().show();
+    /* remove menu from manager */
+    Main.panel.menuManager.removeMenu(button.menu);
 
-    /* clean up */
-    box = null;
-    iconBox = null;
+    /* remove status panel button from UI */
+    Main.panel._rightBox.remove_child(button.container);
+
+    /* memory freak */
+    button = null;
 }
 
 /**
- * @returns the UI tray object
+ * Move icon-box out of slider, so it can be moved around.
  */
-function _tray() {
-    return Main.legacyTray.actor.get_first_child();
+function _disassemleWidget() {
+    _moveChild(
+            Main.legacyTray._iconBox,
+            Main.legacyTray._box,
+            Main.legacyTray.actor);
 }
 
 /**
- * Replaces the icon box in the tray with the given one.
- * 
- * @param newIconBox - the icon box to set
- * @returns the icon box previously in place
+ * Move icon-box back into slider.
  */
-function _setIconBox(newIconBox) {
-    let container = _tray().get_first_child();
-    let oldIconBox = container.get_child_at_index(1);
-    container.replace_child(oldIconBox, newIconBox);
-    return oldIconBox;
+function _reassemleWidget() {
+    _moveChild(
+            Main.legacyTray._iconBox,
+            Main.legacyTray.actor,
+            Main.legacyTray._box);
+}
+
+/**
+ * Removes the child from an actor and add it to another.
+ */
+function _moveChild(child, from, to) {
+    from.remove_child(child);
+    to.add_child(child);
+}
+
+function _logCalls(target, id) {
+    for ( let p in target) {
+        if (typeof target[p] === 'function') {
+            let name = p;
+            _intercept(target, name, function(proceed) {
+                log('[' + id + '] called function: ' + name);
+                return proceed();
+            });
+        }
+    }
+}
+
+function _intercept(target, name, handler) {
+    let origin = target[name];
+    target[name] = function() {
+        let _arguments = arguments;
+        let proceed = function() {
+            return origin.apply(target, _arguments);
+        }
+        return handler.call(this, proceed, arguments);
+    }
+    return origin;
+}
+
+function _logProps(obj) {
+    for ( let p in obj) {
+        log('props of [' + obj + ']: ' + p);
+    }
 }

@@ -1,7 +1,10 @@
 .legacy-tray-box {
     background-color: rgba(10, 10, 10, 0.7);
     border-radius: 5px;
-    padding: 5px;
     border: 1px solid white;
-    margin-left: 1250px;
+}
+
+.legacy-tray-box StButton {
+    width: 34px;
+    height: 34px;
 }
